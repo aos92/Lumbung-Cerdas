@@ -289,7 +289,7 @@ test('/api/latest JSON dan teks (untuk App Inventor)', async () => {
   store.reset();
   const empty = await (await fetch(`${base}/api/latest`, { headers: H })).json();
   assert.deepEqual([empty.ok, empty.result, empty.sensors], [true, null, null]);
-  assert.equal(await (await fetch(`${base}/api/latest?format=text`, { headers: H })).text(), Array(25).fill('-').join('|'));
+  assert.equal(await (await fetch(`${base}/api/latest?format=text`, { headers: H })).text(), Array(26).fill('-').join('|'));
   answer(ROT);
   await (await post(`?${Q}`)).text();
   const l = await (await fetch(`${base}/api/latest`, { headers: H })).json();
@@ -299,7 +299,7 @@ test('/api/latest JSON dan teks (untuk App Inventor)', async () => {
   assert.equal(typeof l.result.age_s, 'number');
   assert.ok(l.sensors.assessment);
   const t = (await (await fetch(`${base}/api/latest?format=text`, { headers: H })).text()).split('|');
-  assert.equal(t.length, 25);
+  assert.equal(t.length, 26);
   assert.ok(Number.isInteger(Number(t[20])) && Number.isInteger(Number(t[21]))); // umur sensor & umur hasil foto (detik)
   assert.deepEqual(t.slice(11, 13), ['belum cukup data', 'tidak']);
   assert.deepEqual(t.slice(13, 19), ['segar', '0', 'normal', 'normal', 'normal', 'normal']);
@@ -552,7 +552,7 @@ test('/api/latest teks: foto bukan buah -> kolom nutrisi kosong tetap "-" (jumla
   answer('{"is_fruit":false,"name_id":"","name_en":"","condition":"","confidence":"low","nutrition":""}');
   await (await post(`?${Q}`)).text();
   const t = (await (await fetch(`${base}/api/latest?format=text`, { headers: H })).text()).split('|');
-  assert.equal(t.length, 25);
+  assert.equal(t.length, 26);
   assert.equal(t[0], 'Bukan buah');
   assert.ok(t.every((x) => x !== ''), 'tidak boleh ada kolom kosong');
 });
@@ -562,7 +562,7 @@ test('/api/latest teks: kolom 23-25 = kondisi terburuk, status Peltier dan kipas
   // hanya sensor (segar menurut gas) + Peltier ON, kipas OFF
   await (await fetch(`${base}/api/sensors?${Q}&peltier=1&fan=0`, { method: 'POST', headers: H })).text();
   let t = (await (await fetch(`${base}/api/latest?format=text`, { headers: H })).text()).split('|');
-  assert.equal(t.length, 25);
+  assert.equal(t.length, 26);
   assert.deepEqual(t.slice(22, 25), ['segar', 'ON', 'OFF']);
   // foto busuk -> kondisi menjadi busuk walau sensor segar; aktuator terbaru dibawa foto (sensor inline)
   answer(ROT);
@@ -646,7 +646,7 @@ test('konsistensi: setiap path /api yang dipakai ESP32, README, dokumen, dan skr
       if (p === '/health') continue;
       const r = await fetch(`${base}${p}`, { method: method.toUpperCase(), headers: { 'x-api-key': SECRET } });
       assert.notEqual(r.status, 405, `${method} ${p} ditolak server (405)`);
-      if (p !== '/api/trend') assert.notEqual(r.status, 404, `${method} ${p} tidak ada (404)`); // /api/trend?key= memang 404 bila belum ada data
+      if (p !== '/api/trend' && p !== '/api/image') assert.notEqual(r.status, 404, `${method} ${p} tidak ada (404)`); // /api/trend?key= dan /api/image memang 404 bila belum ada data/foto
     }
   }
   // nama parameter sensor di ESP32 = nama di spesifikasi
@@ -658,4 +658,43 @@ test('konsistensi: setiap path /api yang dipakai ESP32, README, dokumen, dan skr
   const r = await fetch(`${base}/api/sensors?format=text&co2=1500&ammonia=20&alcohol=30&methane=40&temp=27.5&hum=66`, { method: 'POST', headers: { 'x-api-key': SECRET } });
   const doc = fs.readFileSync(path.join(root, 'docs/APP_INVENTOR.md'), 'utf8');
   assert.ok(doc.includes(await r.text()), 'contoh OK|skor|risiko|kelas di APP_INVENTOR.md tidak sama dengan balasan server');
+});
+
+test('/api/image: 404 sebelum ada foto; sesudah POST /api/fruit mengembalikan JPEG yang sama', async () => {
+  store.reset();
+  const none = await fetch(`${base}/api/image`, { headers: H });
+  assert.equal(none.status, 404);
+  assert.equal((await none.json()).ok, false);
+  answer(ROT);
+  assert.equal((await post(`?${Q}`)).status, 200);
+  const r = await fetch(`${base}/api/image`, { headers: H });
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'image/jpeg');
+  assert.equal(r.headers.get('cache-control'), 'no-store');
+  assert.ok(Number(r.headers.get('x-image-id')) > 0);
+  assert.deepEqual(Buffer.from(await r.arrayBuffer()), JPEG);
+});
+
+test('/api/image: kunci lewat ?key= diterima (komponen Image App Inventor), kunci salah/kosong 401', async () => {
+  answer(ROT);
+  await (await post(`?${Q}`)).text();
+  assert.equal((await fetch(`${base}/api/image?key=${SECRET}&v=1`)).status, 200);
+  assert.equal((await fetch(`${base}/api/image?key=salah`)).status, 401);
+  assert.equal((await fetch(`${base}/api/image`)).status, 401);
+  // ?key= HANYA berlaku untuk /api/image, bukan endpoint lain
+  assert.equal((await fetch(`${base}/api/latest?key=${SECRET}`)).status, 401);
+});
+
+test('foto tetap tersimpan walau analisis AI gagal; id foto muncul di /api/latest (JSON dan kolom 26)', async () => {
+  store.reset();
+  reply = () => ({ status: 500, body: { error: 'x' } });
+  const bad = await post(`?${Q}`);
+  assert.ok(bad.status >= 400);
+  assert.equal((await fetch(`${base}/api/image`, { headers: H })).status, 200);
+  const l = await (await fetch(`${base}/api/latest`, { headers: H })).json();
+  assert.equal(l.image.mime, 'image/jpeg');
+  assert.equal(l.image.bytes, JPEG.length);
+  const t = (await (await fetch(`${base}/api/latest?format=text`, { headers: H })).text()).split('|');
+  assert.equal(t.length, 26);
+  assert.equal(t[25], String(l.image.id));
 });

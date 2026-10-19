@@ -14,7 +14,9 @@
  *                       (POST ?alkohol_min=5&alkohol_maks=50&co2_min=...; ?format=text)
  *   GET|POST /api/setpoints  5 setpoint kontrol (co2, metana, alkohol, suhu, kelembaban) dari App Inventor; diambil Central Unit
  *                       (POST ?co2=2500&metana=100&alkohol=50&suhu=25&kelembaban=85; ?format=text -> OK|co2|metana|alkohol|suhu|kelembaban|0/1)
- *   GET  /api/latest    hasil + sensor terakhir (untuk MIT App Inventor); ?format=text (25 kolom, lihat docs/APP_INVENTOR.md)
+ *   GET  /api/latest    hasil + sensor terakhir (untuk MIT App Inventor); ?format=text (26 kolom, lihat docs/APP_INVENTOR.md)
+ *   GET  /api/image     foto JPEG terakhir dari ESP32-CAM (untuk komponen Image MIT App Inventor); kunci boleh lewat ?key=<kunci>
+ *                       karena komponen Image tidak bisa mengirim header. 404 bila belum ada foto. Tambah &v=<id> agar tidak ter-cache.
  *   GET  /api/history   riwayat; ?type=results|sensors&limit=20
  *   GET  /api/trend     analisis perubahan per jenis buah/batch; ?key=pisang&limit=50 ; ?format=text
  *   GET  /docs          dokumentasi Swagger UI (publik): struktur backend, model AI, semua endpoint + uji langsung
@@ -120,6 +122,8 @@ async function handleFruit(req, res, url) {
         if (image.length > MAX_IMAGE_BYTES) return send(res, 413, { ok: false, error: 'Gambar terlalu besar' }, asText);
         const mime = fruit.detectMime(image);
         if (!mime) return send(res, 400, { ok: false, error: 'Format harus JPEG/PNG' }, asText);
+        // Simpan foto segera (sebelum sensor/AI diperiksa) agar aplikasi tetap bisa menampilkannya walau analisis AI gagal.
+        store.saveImage(image, mime);
 
         let sensors = parsedSensors.values;
         let source = 'inline';
@@ -235,6 +239,20 @@ async function handleSensors(req, res, url) {
     }
 }
 
+// Foto terakhir mentah (image/jpeg atau image/png). Komponen Image App Inventor hanya menerima URL, tanpa header.
+function handleImage(res) {
+    const img = store.getImage();
+    if (!img) return send(res, 404, { ok: false, error: 'Belum ada foto' }, false);
+    res.writeHead(200, {
+        'Content-Type': img.mime,
+        'Content-Length': img.data.length,
+        'Cache-Control': 'no-store',
+        'X-Image-Id': String(img.id),
+        'X-Image-Time': new Date(img.ts).toISOString(),
+    });
+    res.end(img.data);
+}
+
 const onOff = (v) => (v === undefined || v === null ? undefined : (v ? 'ON' : 'OFF'));
 
 function latestText(l, limits) {
@@ -250,8 +268,10 @@ function latestText(l, limits) {
         r && r.change ? (r.change.significant ? 'ya' : 'tidak') : undefined,
         cls.class, cls.index, ...statusList(cls), r ? r.klasifikasi : undefined,
         l.sensors ? l.sensors.age_s : undefined, r ? r.age_s : undefined,
-        // 23 kondisi buah (terburuk antara foto terakhir dan sensor terkini), 24 Peltier, 25 kipas
-        combine(r ? r.klasifikasi : null, cls.class), onOff(act && act.peltier), onOff(act && act.fan)].map(dash).join('|');
+        // 23 kondisi buah (terburuk antara foto terakhir dan sensor terkini), 24 Peltier, 25 kipas, 26 id foto (lihat di bawah)
+        combine(r ? r.klasifikasi : null, cls.class), onOff(act && act.peltier), onOff(act && act.fan),
+        // 26 id foto terakhir (ms; berubah tiap ada foto baru; '-' bila belum ada) -> GET /api/image?v=<id>
+        (store.imageInfo() || {}).id].map(dash).join('|');
 }
 
 function handleLatest(res, url) {
@@ -262,7 +282,7 @@ function handleLatest(res, url) {
         l.sensors.assessment = assess({ sensors: l.sensors.values, limits });
         l.sensors.classification = classifySensors(l.sensors.values, limits);
     }
-    return sendJson(res, 200, { ok: true, server_time: new Date().toISOString(), limits, setpoints: store.getSetpoints().values, ...l });
+    return sendJson(res, 200, { ok: true, server_time: new Date().toISOString(), limits, setpoints: store.getSetpoints().values, image: store.imageInfo(), ...l });
 }
 
 async function handleLimits(req, res, url) {
@@ -391,6 +411,7 @@ function createServer() {
             '/api/limits': [['GET', 'POST'], (r, s) => handleLimits(r, s, url)],
             '/api/setpoints': [['GET', 'POST'], (r, s) => handleSetpoints(r, s, url)],
             '/api/latest': ['GET', (r, s) => handleLatest(s, url)],
+            '/api/image': ['GET', (r, s) => handleImage(s)],
             '/api/history': ['GET', (r, s) => handleHistory(s, url)],
             '/api/trend': ['GET', (r, s) => handleTrend(s, url)],
         };
@@ -399,7 +420,10 @@ function createServer() {
             const asText = url.searchParams.get('format') === 'text';
             const allowed = [].concat(route[0]);
             if (!allowed.includes(req.method)) { res.setHeader('Allow', allowed.join(', ')); return send(res, 405, { ok: false, error: `Gunakan ${allowed.join(' atau ')}` }, asText); }
-            if (!isAuthorized(req.headers, sharedSecret())) {
+            // Hanya /api/image: kunci juga boleh di ?key= (komponen Image App Inventor tak bisa kirim header).
+            const keyOk = isAuthorized(req.headers, sharedSecret())
+                || (url.pathname === '/api/image' && keyMatches(url.searchParams.get('key') || undefined, sharedSecret()));
+            if (!keyOk) {
                 res.setHeader('WWW-Authenticate', 'Bearer');
                 req.resume();
                 return send(res, 401, { ok: false, error: 'x-api-key salah atau kosong' }, asText);

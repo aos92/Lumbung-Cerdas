@@ -36,6 +36,7 @@ Swagger UI dimuat browser dari CDN jsDelivr (versi dipatok), jadi server tetap t
 | GET/POST | `/api/limits` | sama | batas min/maks alkohol, CO2, metana, amonia dari textbox App Inventor; `?format=text` |
 | GET/POST | `/api/setpoints` | sama | 5 setpoint kontrol (CO2, metana, alkohol, suhu, kelembaban) dari App Inventor, diambil Central Unit; `?format=text` membalas `OK` + lima nilai (urutan co2, metana, alkohol, suhu, kelembaban) + penanda custom 0/1 |
 | GET | `/api/latest` | sama | hasil foto + sensor terakhir; `?format=text` untuk App Inventor |
+| GET | `/api/image` | sama, atau `?key=` (untuk komponen Image App Inventor) | foto JPEG terakhir dari ESP32-CAM; 404 bila belum ada; `&v=<id>` anti-cache |
 | GET | `/api/history` | sama | riwayat; `?type=results\|sensors&limit=20` |
 | GET | `/api/trend` | sama | analisis perubahan per jenis buah/batch; `?key=pisang`, `?format=text` |
 

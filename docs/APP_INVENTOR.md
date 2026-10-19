@@ -76,6 +76,7 @@ Satu Web **per jenis permintaan**: jangan memakai satu Web untuk dua permintaan 
 | Komponen | Tipe | Properti |
 |---|---|---|
 | `Canvas_Dash` | Canvas | `Width Fill parent`, `Height 300` (diatur ulang lewat blok menjadi 3/4 lebar), `BackgroundColor Black` |
+| `Img_Foto` | Image | `Width Fill parent`, `Height 240`, `ScalePictureToFit true`, `Visible false` (baru tampil setelah ada foto; bagian 4.6) |
 | `Lbl_Koneksi` | Label | `FontSize 12`, `TextColor Gray`, `Width Fill parent` |
 | `Lbl_JudulBatas` | Label | Teks "BATAS GAS (ppm)", `TextColor Cyan`, `FontBold true` |
 | `TxtAlkoholMin`, `TxtAlkoholMaks` | TextBox | `NumbersOnly true`, `BackgroundColor Dark Gray`, `TextColor White`, Hint "Alkohol min/maks (ppm)" |
@@ -150,7 +151,8 @@ initialize global c_grey      to make color (make a list 110 110 110)
 - `base_url` tanpa `/` di akhir. Render: `https://NAMA-SERVICE.onrender.com`. Backend di Termux pada HP yang sama:
   `http://127.0.0.1:9655` (lihat `docs/TERMUX.md`).
 - `skala` = lebar kanvas / 320, dihitung saat menggambar. `skala_font` = kalibrasi ukuran teks (bagian 4.1).
-- `data` = 25 kolom balasan `/api/latest` terakhir (bagian 4.2). `badge` = "LIVE" | "OFFLINE" | "NO NET".
+- `foto_id` = "" (id foto terakhir yang sudah ditampilkan di `Img_Foto`, bagian 4.6).
+- `data` = 26 kolom balasan `/api/latest` terakhir (bagian 4.2). `badge` = "LIVE" | "OFFLINE" | "NO NET".
 - `sedang_latest` / `sedang_batas` mencegah dua permintaan menimpa satu komponen Web.
 - `batas_basi_detik` = 30: Central Unit mengirim sensor tiap 10 detik; data lebih tua dari 30 detik berarti alat mati.
 
@@ -272,7 +274,7 @@ to Procedure_Bar x y w h frac warna
 - **Kalibrasi teks:** bila teks tampak jauh lebih besar atau kecil dari panelnya di ponsel Anda, ubah `skala_font`
   (mis. 0.8 atau 1.25). Cukup satu angka ini; semua teks ikut berubah.
 
-### 4.2 Isi balasan `/api/latest?format=text` (25 kolom, dipisah `|`, `-` bila kosong)
+### 4.2 Isi balasan `/api/latest?format=text` (26 kolom, dipisah `|`, `-` bila kosong)
 
 | # | Isi | Dipakai di | # | Isi | Dipakai di |
 |---|---|---|---|---|---|
@@ -288,7 +290,7 @@ to Procedure_Bar x y w h frac warna
 | 10 | **suhu** (°C) | kartu Suhu | 23 | **kondisi buah** (terburuk: foto vs sensor) | Mode Buah |
 | 11 | **kelembapan** (%) | kartu Kelembapan | 24 | **Peltier** `ON`/`OFF` | Pendingin |
 | 12 | status tren | — | 25 | **kipas** `ON`/`OFF` | Sirkulasi |
-| 13 | perubahan signifikan | — | | | |
+| 13 | perubahan signifikan | — | 26 | **id foto** terakhir (berubah tiap foto baru) | `Img_Foto` (bagian 4.6) |
 
 `split` menghasilkan daftar berindeks **mulai 1**, jadi kolom nomor 7 = `select list item … index 7`.
 Kolom 23 = klasifikasi yang **lebih buruk** antara foto terakhir dan sensor terkini (`segar` < `matang` < `mulai busuk` < `busuk`),
@@ -511,6 +513,24 @@ to Procedure_TampilLatest content
             set Lbl_Koneksi.TextColor to red
         call Procedure_GambarDashboard
 ```
+
+### 4.6 Menampilkan foto terakhir (`GET /api/image`)
+
+Komponen **Image** hanya menerima URL dan tidak bisa mengirim header `x-api-key`, jadi kunci dikirim lewat `?key=` (hanya
+`/api/image` yang menerimanya). Kolom 26 = id foto; gambar dimuat ulang **hanya bila id berubah**. Blok ini disisipkan
+**paling atas** di cabang `then` pada `if (length of list f) ≥ 25` di `Procedure_TampilLatest`:
+
+```
+if (length of list (get f)) ≥ 26  and  is number? (select list item (get f) index 26)
+   and  (select list item (get f) index 26) ≠ (get global foto_id) then
+    set global foto_id to (select list item list (get f) index 26)
+    set Img_Foto.Picture to join (get global base_url) "/api/image?key=" (get global api_key)
+                                 "&v=" (select list item list (get f) index 26)
+    set Img_Foto.Visible to true
+```
+
+`&v=<id>` mencegah gambar lama tertahan di cache. Foto disimpan server di memori (hilang saat server tidur/restart):
+sebelum ada foto, kolom 26 = `-` dan `Img_Foto` tetap tersembunyi.
 
 Bila server membalas `ERR|…` (kurang dari 25 item), pesannya tampil di `Lbl_Koneksi`, dashboard tetap menampilkan data terakhir
 dengan badge OFFLINE.

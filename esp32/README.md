@@ -113,3 +113,8 @@ Satu adaptor 5V minimal 3A. Rail 5V ke VIN/5V ESP32, VCC tiga MQ, dan 5V ESP32-C
 - `CO2_BASELINE_PPM` (400) ditambahkan karena rumus MQ-135 mengembalikan selisih. Rumus MQ-3 pustaka berunit mg/L; sketch mengalikannya dengan `ALCOHOL_SCALE` = 530 (1 mg/L etanol ≈ 530 ppm) agar sama dengan satuan ppm di setpoint dan batas aplikasi. Sketch uji di `test/mq3` masih menampilkan mg/L.
 - TLS memakai `setInsecure()` (tanpa verifikasi sertifikat) agar tidak perlu menanam CA yang kedaluwarsa. API key tetap terkirim lewat HTTPS.
 - Render gratis tidur saat sepi; Central memanggil `/health` dulu sebelum mengunggah foto.
+
+## Foto di aplikasi
+
+Foto dari ESP32-CAM diunggah Central Unit ke `POST /api/fruit`; backend menyimpannya (walau analisis AI gagal) dan aplikasi menampilkannya lewat `GET /api/image`.
+Ketik `g` di Serial Monitor untuk mengecek foto terakhir di backend (kode HTTP, ukuran, id foto).
