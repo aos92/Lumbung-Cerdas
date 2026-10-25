@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: fruit-api
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      # Kunci bersama ESP32 <-> backend (dikirim ESP32 lewat header x-api-key).
+      # Isi nilainya di dashboard Render; sync: false = tidak ditulis di repo.
+      - key: SHARED_SECRET
+        sync: false
+      # Key NVIDIA Build (nvapi-...), isi di dashboard Render.
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NVIDIA_VISION_MODEL
+        value: meta/llama-3.2-11b-vision-instruct

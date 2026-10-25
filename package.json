@@ -1,0 +1,19 @@
+{
+  "name": "fruit-nvidia-api",
+  "version": "1.0.0",
+  "description": "Backend ESP32-CAM pengenal buah: gambar -> NVIDIA Build (model vision) -> nama + nutrisi",
+  "main": "server.js",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "doctor": "node scripts/doctor.js",
+    "termux": "sh scripts/termux-start.sh",
+    "proot": "sh scripts/termux-start.sh",
+    "doctor:local": "node scripts/doctor.js --local",
+    "check": "node --check server.js && node --check lib/env.js && node --check lib/fruit.js && node --check lib/nvidia.js && node --check lib/assess.js && node --check lib/store.js && node --check lib/trend.js && node --check lib/limits.js && node --check lib/classify.js && node --check lib/setpoints.js && node --check lib/docs.js && node --check scripts/doctor.js",
+    "test": "npm run check && node --test tests/fruit.test.js tests/assess.test.js tests/trend.test.js tests/classify.test.js tests/setpoints.test.js tests/server.test.js"
+  },
+  "keywords": ["esp32-cam", "nvidia", "vision", "fruit", "render"],
+  "license": "MIT",
+  "engines": { "node": ">=18.0.0" }
+}

@@ -1,0 +1,8 @@
+# Hanya berkas yang dipakai Containerfile yang masuk build context.
+*
+!Containerfile
+!.containerignore
+!package.json
+!server.js
+!lib/
+!lib/*.js
